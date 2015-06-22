@@ -19,46 +19,31 @@
 #
 ##############################################################################
 import time
+from openerp.addons.report_webkit.webkit_report import webkit_report_extender
 
-from openerp.report import report_sxw
-from openerp import pooler
+@webkit_report_extender("sale.report_sale_order")
+def extend_sale_report_webkit(pool, cr, uid, localcontext, context):
+    res_users_obj = pool['res.users']
+    model_data_obj = pool['ir.model.data']
 
+    company_vat = res_users_obj.browse(cr, uid, uid, context=context)\
+        .company_id.partner_id.vat
 
-class SaleOrderReport(report_sxw.rml_parse):
-    def __init__(self, cr, uid, name, context):
-        super(SaleOrderReport, self).__init__(cr, uid, name, context=context)
-        self.localcontext.update({'time': time,
-                                  'company_vat': self._get_company_vat,
-                                  'show_discount': self._show_discount,
-                                  })
-
-    def _show_discount(self, uid, context=None):
-        """ check if the user belongs to group_discount_per_so_line group
-        """
-        cr = self.cr
-        pool = pooler.get_pool(self.cr.dbname)
-        res_users_obj = pool.get('res.users')
-        model_data_obj = pool.get('ir.model.data')
+    def show_discount(user_id):
         try:
             group_id = model_data_obj.get_object_reference(
                 cr,
                 uid,
                 'sale',
                 'group_discount_per_so_line')[1]
+            groups = res_users_obj.browse(cr, uid, user_id, context=context).groups_id
+            return any(x for x in groups if x.id == group_id)
         except ValueError:
             # group named group_discount_per_so_line doesn't exist
             return False
-        groups = res_users_obj.browse(cr, uid, uid, context=context).groups_id
-        return any(x for x in groups if x.id == group_id)
 
-    def _get_company_vat(self):
-        res_users_obj = pooler.get_pool(self.cr.dbname).get('res.users')
-        company_vat = res_users_obj.browse(
-            self.cr, self.uid, self.uid
-        ).company_id.partner_id.vat
-        return company_vat
-
-report_sxw.report_sxw('report.sale.order.webkit',
-                      'sale.order',
-                      'addons/sale_report_webkit/report/sale_order.mako',
-                      parser=SaleOrderReport)
+    localcontext.update({
+        'time': time,
+        'company_vat': company_vat,
+        'show_discount': show_discount,
+    })
